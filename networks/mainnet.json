@@ -1,0 +1,50 @@
+{
+    "contracts": {
+      "tokens": {
+        "DAI": {
+          "address": "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+          "decimals": 18
+        },
+        "USDC": {
+          "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          "decimals": 6
+        },
+        "USDT": {
+          "address": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+          "decimals": 6
+        },
+        "TUSD": {
+          "address": "0x0000000000085d4780B73119b644AE5ecd22b376",
+          "decimals": 18
+        },
+        "sUSD": {
+          "address": "0x57Ab1ec28D129707052df4dF418D58a2D46d5f51",
+          "decimals": 18
+        },
+        "yDAI+yUSDC+yUSDT+yTUSD": {
+          "address": "0xdF5e0e81Dff6FAF3A7e52BA697820c5e32D806A8",
+          "decimals": 18,
+          "name": "Curve.fi yDAI/yUSDC/yUSDT/yTUSD",
+          "peak": "curveYPool"
+        },
+        "crvPlain3andSUSD": {
+          "address": "0xC25a3A3b969415c80451098fa907EC722572917F",
+          "decimals": 18,
+          "name": "Curve.fi DAI/USDC/USDT/sUSD",
+          "peak": "curveYPool"
+        }
+      },
+      "peaks": {
+        "curveYPool": {
+          "address": "",
+          "coins": ["DAI", "USDC", "USDT", "TUSD"],
+          "native": ["yDAI+yUSDC+yUSDT+yTUSD"]
+        },
+        "curveSUSDPool": {
+          "address": "",
+          "coins": ["DAI", "USDC", "USDT", "sUSD"]
+        }
+      },
+      "valley": "0xFf795577d9AC8bD7D90Ee22b6C1703490b6512FD"
+    }
+  }
