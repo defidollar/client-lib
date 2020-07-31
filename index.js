@@ -1,22 +1,84 @@
 const Web3 = require('web3')
-const web3 = new Web3()
+
+const IERC20 = require('./artifacts/ERC20Detailed.json')
+const IPeak = require('./artifacts/IPeak.json')
 
 const toBN = web3.utils.toBN
+const toWei = web3.utils.toWei
 const SCALE_18 = toBN(10).pow(toBN(18))
+const TEN_THOUSAND = toBN(10000)
 
 class DefiDollarClient {
     constructor(web3, config) {
-        this.web3 = web3
+        this.web3 = web3 || new Web3()
         this.config = config
-        this.peak = new web3.eth.Contract(IPeak.abi)
+        this.peak = new this.web3.eth.Contract(IPeak.abi)
+        this.IERC20 = new this.web3.eth.Contract(IERC20.abi)
     }
 
     /**
-     * @dev Mint DUSD
-     * @param tokens { { DAI: '6.1' }, { USDT: '8.2' } }
-     * @param minDusdAmount
+     * @notice Mint DUSD
+     * @dev Don't send values scaled with decimals. The following code will handle it.
+     * @param tokens InAmounts in the format { DAI: '6.1', USDT: '0.2', ... }
+     * @param dusdAmount Expected dusd amount not accounting for the slippage
+     * @param slippage Maximum allowable slippage 0 <= slippage <= 100
      */
-    mint(tokens, dusdAmount, slippage) {
+    mint(tokens, dusdAmount, slippage, options = {}) {
+        const { peak, amount, isNative } = this._process(tokens)
+        let minDusdAmount = scale(parseInt(dusdAmount), 18)
+            .mul(TEN_THOUSAND.sub(toBN(parseFloat(slippage) * 100)))
+            .div(TEN_THOUSAND)
+            .toString()
+        this.peak.options.address = peak.address
+        let txObject
+        if (isNative) {
+            txObject = this.peak.methods.mintWithCurvePoolTokens(amount, minDusdAmount)
+        } else {
+            txObject = this.peak.methods.mint(amount, minDusdAmount)
+        }
+        return this._send(txObject, options)
+    }
+
+    /**
+     * @notice Redeem DUSD
+     * @dev Don't send values scaled with decimals. The following code will handle it.
+     * @param tokens OutAmounts in the format { DAI: '6.1', USDT: '0.2', ... }
+     * @param dusdAmount Expected dusd amount not accounting for the slippage
+     * @param slippage Maximum allowable slippage 0 <= slippage <= 100
+     */
+    redeem(tokens, dusdAmount, slippage, options = {}) {
+        const { peak, amount, isNative } = this._process(tokens)
+        let maxDusdAmount = scale(parseInt(dusdAmount), 18)
+            .mul(TEN_THOUSAND.add(toBN(parseFloat(slippage) * 100)))
+            .div(TEN_THOUSAND)
+            .toString()
+        this.peak.options.address = peak.address
+        let txObject
+        if (isNative) {
+            txObject = this.peak.methods.redeemWithCurvePoolTokens(amount, maxDusdAmount)
+        } else {
+            txObject = this.peak.methods.redeem(amount, maxDusdAmount)
+        }
+        return this._send(txObject, options)
+    }
+
+    /**
+     * @notice calcExpectedAmount of DUSD that will be minted or redeemed
+     * @dev Don't send values scaled with decimals. The following code will handle it.
+     * @param tokens amounts in the format { DAI: '6.1', USDT: '0.2', ... }
+     * @param deposit deposit=true, withdraw=false
+     */
+    calcExpectedAmount(tokens, deposit) {
+        const { peak, amount, isNative } = this._process(tokens)
+        this.peak.options.address = peak.address
+        let expectedAmount
+        if (isNative) {
+            return this.peak.methods.calcExpectedWithCurvePoolTokens(amount).call()
+        }
+        return this.peak.methods.calcExpectedAmount(amount, deposit).call()
+    }
+
+    _process(tokens) {
         Object.keys(tokens).forEach(t => {
             tokens[t] = parseInt(tokens[t])
             if (!tokens[t]) delete tokens[t]
@@ -24,43 +86,103 @@ class DefiDollarClient {
         const allPeaks = this.config.contracts.peaks
         const peaks = Object.keys(allPeaks)
         for (let i = 0; i < peaks.length; i++) {
-            const { isValid, isNative, inAmount } = this.checkValid(peak, tokens)
+            const peak = allPeaks[peaks[i]]
+            const { isValid, isNative, amount } = this._validateTokensForPeak(peak, tokens)
             if (!isValid) continue;
-            this.peak.options.address = peak.address
-            const minDusdAmount = toBN(dusdAmount).mul(toBN(100 - slippage)).div(toBN(100))
-            if (isNative) {
-                return this.peak.methods.mintWithCurvePoolTokens(inAmount, minDusdAmount)
-            } else {
-                return this.peak.methods.mint(inAmount, minDusdAmount)
-            }
+            return { peak, amount, isNative }
         }
-        throw new Error(`No supported peak for token combination of ${tokens}`)
+        throw new Error(`No supported peak for token combination ${tokens}`)
     }
 
-    checkValid(peak, tokens) {
+    _validateTokensForPeak(peak, tokens) {
         // check native token
         if (tokens[peak.native]) {
             // no other tokens allowed
             if (Object.keys(tokens).length > 1) {
                 throw new Error(`Native tokens ${peak.native} provided with other tokens ${tokens}`)
             }
-            return { isValid: true, isNative: true, inAmount: toWei(tokens[peak.native]) }
+            return { isValid: true, isNative: true, amount: scale(tokens[peak.native], 18).toString() }
         }
+
+        // should only have coins that the peak supports
         let isValid = true
         Object.keys(tokens).forEach(t => {
             if (!peak.coins.includes(t)) {
                 isValid = false
             }
         })
-        if (!isValid) return { isValid: false }
-        const inAmount = []
+        if (!isValid) return { isValid }
+
+        // Push coins in the same order as required by the peak
+        const amount = []
         peak.coins.forEach(c => {
-            inAmount.push(tokens[c]|| 0)
+            amount.push(
+                tokens[c] ? scale(tokens[c], this.config.contracts.tokens[c].decimals).toString() : 0
+            )
         })
-        return { isValid: true, inAmount }
+        return { isValid: true, amount }
     }
 
-    scale(num, decimals) {
-        return toBN(num).mul(toBN(10).pow(toBN(decimals)))
+    async _send(txObject, options) {
+        if (!options.from) throw new Error('from field is not provided')
+        if (!options.gasLimit) {
+            const gasLimit = parseInt(await txObject.estimateGas({ from: options.from }))
+            options.gasLimit = parseInt(gasLimit * 1.5)
+        }
+        options.gasPrice = options.gasPrice || await web3.eth.getGasPrice()
+        return txObject.send(options)
+    }
+
+    // ##### Common Functions #####
+
+    /**
+     * @notice balanceOf
+     * @dev Scales down the value only if decimals param is provided
+     * @param token Contract address or supported token ids DAI, USDC, USDT ...
+     * @param account Account
+     * @return balance
+     */
+    async balanceOf(token, account, decimals) {
+        token = this._processTokenId(token)
+        this.IERC20.options.address = token
+        if (!this.IERC20.options.address) {
+            throw new Error(`tokenId ${tokenId} is not supported`)
+        }
+        let bal = await this.IERC20.methods.balanceOf(account).call()
+        if (decimals) {
+            bal = unscale(bal, decimals)
+        }
+        return bal
+    }
+
+    /**
+     * @notice approve
+     * @param token ERC20 token contract
+     * @param spender Spender
+     * @param amount Amount not scaled for decimals
+     */
+    async approve(token, spender, amount, options = {}) {
+        token = this._processTokenId(token)
+        this.IERC20.options.address = token
+        if (!this.IERC20.options.address) throw new Error(`tokenId ${tokenId} is not known`)
+        const txObject = this.IERC20.methods.approve(
+            spender,
+            scale(amount, await this.IERC20.methods.decimals().call()).toString()
+        )
+        return this._send(txObject, options)
+    }
+
+    _processTokenId(token) {
+        return token.slice(0, 2) !== '0x' ? this.config.contracts.tokens[token].address : token
     }
 }
+
+function scale(num, decimals) {
+    return toBN(num).mul(toBN(10).pow(toBN(decimals)))
+}
+
+function unscale(num, decimals) {
+    return toBN(num).div(toBN(10).pow(toBN(decimals)))
+}
+
+module.exports = DefiDollarClient

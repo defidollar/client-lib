@@ -1,19 +1,15 @@
 var fs = require('fs');
-var files = fs.readdirSync('network');
+var files = fs.readdirSync('artifacts');
 
-const networks = ['mainnet', 'testnet']
-networks.forEach(n => {
-  const versions = fs.readdirSync(`network/${n}`)
-  versions.forEach(v => {
-    const artifacts = fs.readdirSync(`network/${n}/${v}/artifacts`)
-    artifacts.forEach(a => {
-      const name = `network/${n}/${v}/artifacts/${a}`
-      const abi = JSON.parse(fs.readFileSync(name)).abi
-      if (!abi.length) {
-        fs.unlinkSync(name)
-      } else {
-        fs.writeFileSync(name, JSON.stringify({ abi }) + '\n')
-      }
-    })
-  })
+const contracts = ['ERC20Detailed.json', 'IPeak.json', 'StakeLPToken.json']
+
+const artifacts = fs.readdirSync(`artifacts`)
+  artifacts.forEach(a => {
+    const name = `artifacts/${a}`
+    const abi = JSON.parse(fs.readFileSync(name)).abi
+    if (!abi.length || !contracts.includes(a)) {
+      fs.unlinkSync(name)
+    } else {
+      fs.writeFileSync(name, JSON.stringify({ abi }) + '\n')
+    }
 })
