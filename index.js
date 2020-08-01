@@ -2,6 +2,7 @@ const Web3 = require('web3')
 
 const IERC20 = require('./artifacts/ERC20Detailed.json')
 const IPeak = require('./artifacts/IPeak.json')
+const StakeLPToken = require('./artifacts/StakeLPToken.json')
 
 const toBN = web3.utils.toBN
 const toWei = web3.utils.toWei
@@ -12,8 +13,9 @@ class DefiDollarClient {
     constructor(web3, config) {
         this.web3 = web3 || new Web3()
         this.config = config
-        this.peak = new this.web3.eth.Contract(IPeak.abi)
         this.IERC20 = new this.web3.eth.Contract(IERC20.abi)
+        this.peak = new this.web3.eth.Contract(IPeak.abi)
+        this.valley = new this.web3.eth.Contract(StakeLPToken.abi, config.contracts.valley)
     }
 
     /**
@@ -60,6 +62,38 @@ class DefiDollarClient {
             txObject = this.peak.methods.redeem(amount, maxDusdAmount)
         }
         return this._send(txObject, options)
+    }
+
+    stake(amount, options = {}) {
+        return this._send(
+            this.valley.methods.stake(toWei(amount.toString())),
+            options
+        )
+    }
+
+    withdraw(amount, options = {}) {
+        return this._send(
+            this.valley.methods.withdraw(toWei(amount.toString())),
+            options
+        )
+    }
+
+    getReward(options = {}) {
+        return this._send(
+            this.valley.methods.getReward(),
+            options
+        )
+    }
+
+    exit(options = {}) {
+        return this._send(
+            this.valley.methods.exit(),
+            options
+        )
+    }
+
+    earned(account) {
+        return this.valley.methods.earned(account).call()
     }
 
     /**
