@@ -4,8 +4,8 @@ const IERC20 = require('./artifacts/ERC20Detailed.json')
 const IPeak = require('./artifacts/IPeak.json')
 const StakeLPToken = require('./artifacts/StakeLPToken.json')
 
-const toBN = web3.utils.toBN
-const toWei = web3.utils.toWei
+const toBN = Web3.utils.toBN
+const toWei = Web3.utils.toWei
 const SCALE_18 = toBN(10).pow(toBN(18))
 const TEN_THOUSAND = toBN(10000)
 
@@ -101,15 +101,18 @@ class DefiDollarClient {
      * @dev Don't send values scaled with decimals. The following code will handle it.
      * @param tokens amounts in the format { DAI: '6.1', USDT: '0.2', ... }
      * @param deposit deposit=true, withdraw=false
+     * @return expectedAmount and address of the chosen peak
      */
-    calcExpectedAmount(tokens, deposit) {
+    async calcExpectedAmount(tokens, deposit) {
         const { peak, amount, isNative } = this._process(tokens)
         this.peak.options.address = peak.address
         let expectedAmount
         if (isNative) {
-            return this.peak.methods.calcExpectedWithCurvePoolTokens(amount).call()
+            expectedAmount = await this.peak.methods.calcExpectedWithCurvePoolTokens(amount).call()
+        } else {
+            expectedAmount = await this.peak.methods.calcExpectedAmount(amount, deposit).call()
         }
-        return this.peak.methods.calcExpectedAmount(amount, deposit).call()
+        return { expectedAmount, peak: peak.address }
     }
 
     _process(tokens) {
@@ -163,7 +166,7 @@ class DefiDollarClient {
             const gasLimit = parseInt(await txObject.estimateGas({ from: options.from }))
             options.gasLimit = parseInt(gasLimit * 1.5)
         }
-        options.gasPrice = options.gasPrice || await web3.eth.getGasPrice()
+        options.gasPrice = options.gasPrice || await this.web3.eth.getGasPrice()
         return txObject.send(options)
     }
 
@@ -204,6 +207,12 @@ class DefiDollarClient {
             scale(amount, await this.IERC20.methods.decimals().call()).toString()
         )
         return this._send(txObject, options)
+    }
+
+    allowance(token, account, spender) {
+        token = this._processTokenId(token)
+        this.IERC20.options.address = token
+        return this.IERC20.methods.allowance(account, spender).call()
     }
 
     _processTokenId(token) {
