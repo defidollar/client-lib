@@ -27,7 +27,7 @@ class DefiDollarClient {
      */
     mint(tokens, dusdAmount, slippage, options = {}) {
         const { peak, amount, isNative } = this._process(tokens)
-        let minDusdAmount = scale(parseInt(dusdAmount), 18)
+        let minDusdAmount = toBN(toWei(dusdAmount))
             .mul(TEN_THOUSAND.sub(toBN(parseFloat(slippage) * 100)))
             .div(TEN_THOUSAND)
             .toString()
@@ -66,14 +66,14 @@ class DefiDollarClient {
 
     stake(amount, options = {}) {
         return this._send(
-            this.valley.methods.stake(toWei(amount.toString())),
+            this.valley.methods.stake(scale(amount, 18).toString()),
             options
         )
     }
 
     withdraw(amount, options = {}) {
         return this._send(
-            this.valley.methods.withdraw(toWei(amount.toString())),
+            this.valley.methods.withdraw(scale(amount, 18).toString()),
             options
         )
     }
@@ -113,6 +113,42 @@ class DefiDollarClient {
             expectedAmount = await this.peak.methods.calcExpectedAmount(amount, deposit).call()
         }
         return { expectedAmount, peak: peak.address }
+    }
+
+    async getAPY(days) {
+        const res = { allTime: 0 }
+        days = parseInt(days)
+        if (days) res[days] = 0
+        const events = await this.valley.getPastEvents('RewardPerTokenUpdated', { fromBlock: 0 })
+        // event RewardPerTokenUpdated(uint indexed rewardPerToken, uint indexed when);
+        // first event is first stake event when rewardPerTokenStored was definitely 0
+        if (!events.length) return res
+
+        const year = toBN('3153600000') // 24*60*60*365*100% = 3,15,36,00,000
+        const rewardPerToken = toBN(await this.valley.methods.updateProtocolIncome().call())
+
+        // all time
+        const to = toBN(parseInt(Date.now() / 1000))
+        let from = toBN(events[0].raw.topics[2].slice(2), 'hex') // first ever event
+        res.allTime = rewardPerToken.mul(year).div(SCALE_18).div(to.sub(from)).toString()
+
+        if (!days) return res
+
+        // last `days` days
+        let past = parseInt(Date.now() / 1000) - 86400 * parseInt(days)
+        let index = 0
+        for (let i = events.length-1; i >=0; i--) {
+            if (parseInt(toBN(events[i].raw.topics[2].slice(2), 'hex').toString()) <= past) {
+                index = i
+                break
+            }
+        }
+        res[days] = rewardPerToken
+            .sub(toBN(events[index].raw.topics[1].slice(2), 'hex'))
+            .mul(year).div(SCALE_18)
+            .div(to.sub(toBN(events[index].raw.topics[2].slice(2), 'hex')))
+            .toString()
+        return res
     }
 
     _process(tokens) {
@@ -174,37 +210,32 @@ class DefiDollarClient {
 
     /**
      * @notice balanceOf
-     * @dev Scales down the value only if decimals param is provided
      * @param token Contract address or supported token ids DAI, USDC, USDT ...
      * @param account Account
      * @return balance
      */
-    async balanceOf(token, account, decimals) {
+    async balanceOf(token, account) {
         token = this._processTokenId(token)
         this.IERC20.options.address = token
         if (!this.IERC20.options.address) {
             throw new Error(`tokenId ${tokenId} is not supported`)
         }
-        let bal = await this.IERC20.methods.balanceOf(account).call()
-        if (decimals) {
-            bal = unscale(bal, decimals)
-        }
-        return bal
+        return this.IERC20.methods.balanceOf(account).call()
     }
 
     /**
      * @notice approve
      * @param token ERC20 token contract
      * @param spender Spender
-     * @param amount Amount not scaled for decimals
+     * @param amount Amount Pass without having accounted for decimals
      */
-    async approve(token, spender, amount, options = {}) {
+    async approve(token, spender, amount, decimals, options = {}) {
         token = this._processTokenId(token)
         this.IERC20.options.address = token
         if (!this.IERC20.options.address) throw new Error(`tokenId ${tokenId} is not known`)
         const txObject = this.IERC20.methods.approve(
             spender,
-            scale(amount, await this.IERC20.methods.decimals().call()).toString()
+            scale(amount, decimals).toString()
         )
         return this._send(txObject, options)
     }
@@ -221,11 +252,13 @@ class DefiDollarClient {
 }
 
 function scale(num, decimals) {
-    return toBN(num).mul(toBN(10).pow(toBN(decimals)))
-}
-
-function unscale(num, decimals) {
-    return toBN(num).div(toBN(10).pow(toBN(decimals)))
+    num = toBN(toWei(num.toString()))
+    if (decimals < 18) {
+        num = num.div(toBN(10).pow(toBN(18 - decimals)))
+    } else if (decimals > 18) {
+        num = num.mul(toBN(10).pow(toBN(decimals - 18)))
+    }
+    return num
 }
 
 module.exports = DefiDollarClient
