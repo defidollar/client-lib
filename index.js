@@ -99,16 +99,24 @@ class DefiDollarClient {
      * @param deposit deposit=true, withdraw=false
      * @return expectedAmount and address of the chosen peak
      */
-    async calcExpectedAmount(tokens, deposit) {
+    async calcExpectedMintAmount(tokens) {
         const { peak, amount, isNative } = this._process(tokens)
         this.peak.options.address = peak.address
         let expectedAmount
         if (isNative) {
-            expectedAmount = await this.peak.methods.calcExpectedWithCurvePoolTokens(amount).call()
+            expectedAmount = await this.peak.methods.calcMintWithScrv(amount).call()
         } else {
-            expectedAmount = await this.peak.methods.calcExpectedAmount(amount, deposit).call()
+            expectedAmount = await this.peak.methods.calcMint(amount).call()
         }
         return { expectedAmount, peak: peak.address }
+    }
+
+    async calcExpectedRedeemAmount(dusdAmount) {
+        this.peak.options.address = this.config.contracts.peaks.curveSUSDPool.address
+        return {
+            tokens: await this.peak.methods.calcRedeem(toWei(dusdAmount)).call(),
+            crvPlain3andSUSD: await this.peak.methods.calcRedeemWithScrv(toWei(dusdAmount)).call()
+        }
     }
 
     async getAPY(days) {
