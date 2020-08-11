@@ -1,7 +1,7 @@
 const Web3 = require('web3')
 
 const IERC20 = require('./artifacts/ERC20Detailed.json')
-const IPeak = require('./artifacts/IPeak.json')
+const IPeak = require('./artifacts/CurveSusdPeak.json')
 const StakeLPToken = require('./artifacts/StakeLPToken.json')
 
 const toBN = Web3.utils.toBN
@@ -23,18 +23,15 @@ class DefiDollarClient {
      * @dev Don't send values scaled with decimals. The following code will handle it.
      * @param tokens InAmounts in the format { DAI: '6.1', USDT: '0.2', ... }
      * @param dusdAmount Expected dusd amount not accounting for the slippage
-     * @param slippage Maximum allowable slippage 0 <= slippage <= 100
+     * @param slippage Maximum allowable slippage 0 <= slippage <= 100 %
      */
     mint(tokens, dusdAmount, slippage, options = {}) {
-        const { peak, amount, isNative } = this._process(tokens)
-        let minDusdAmount = toBN(toWei(dusdAmount))
-            .mul(TEN_THOUSAND.sub(toBN(parseFloat(slippage) * 100)))
-            .div(TEN_THOUSAND)
-            .toString()
+        const { peak, amount, isNative } = this._process(tokens, false /* isRedeem */)
+        let minDusdAmount = this.adjustForSlippage(toWei(dusdAmount), slippage).toString()
         this.peak.options.address = peak.address
         let txObject
         if (isNative) {
-            txObject = this.peak.methods.mintWithCurvePoolTokens(amount, minDusdAmount)
+            txObject = this.peak.methods.mintWithScrv(amount, minDusdAmount)
         } else {
             txObject = this.peak.methods.mint(amount, minDusdAmount)
         }
@@ -48,18 +45,17 @@ class DefiDollarClient {
      * @param dusdAmount Expected dusd amount not accounting for the slippage
      * @param slippage Maximum allowable slippage 0 <= slippage <= 100
      */
-    redeem(tokens, dusdAmount, slippage, options = {}) {
-        const { peak, amount, isNative } = this._process(tokens)
-        let maxDusdAmount = scale(parseInt(dusdAmount), 18)
-            .mul(TEN_THOUSAND.add(toBN(parseFloat(slippage) * 100)))
-            .div(TEN_THOUSAND)
-            .toString()
+    redeem(dusdAmount, tokens, slippage, options = {}) {
+        const { peak, amount, isNative, redeemInSingleCoin, index } = this._process(tokens, true /* isRedeem */)
         this.peak.options.address = peak.address
+        dusdAmount = toWei(dusdAmount)
         let txObject
         if (isNative) {
-            txObject = this.peak.methods.redeemWithCurvePoolTokens(amount, maxDusdAmount)
+            txObject = this.peak.methods.redeemInScrv(dusdAmount, this.adjustForSlippage(amount, slippage))
+        } else if (redeemInSingleCoin) {
+            txObject = this.peak.methods.redeemInSingleCoin(dusdAmount, index, this.adjustForSlippage(amount, slippage))
         } else {
-            txObject = this.peak.methods.redeem(amount, maxDusdAmount)
+            txObject = this.peak.methods.redeem(dusdAmount, amount.map(a => this.adjustForSlippage(a, slippage)))
         }
         return this._send(txObject, options)
     }
@@ -130,6 +126,7 @@ class DefiDollarClient {
         // all time
         const to = toBN(parseInt(Date.now() / 1000))
         let from = toBN(events[0].raw.topics[2].slice(2), 'hex') // first ever event
+        // console.log({ rewardPerToken, year, to, from })
         res.allTime = rewardPerToken.mul(year).div(SCALE_18).div(to.sub(from)).toString()
 
         if (!days) return res
@@ -151,7 +148,19 @@ class DefiDollarClient {
         return res
     }
 
-    _process(tokens) {
+    adjustForSlippage(amount, slippage) {
+        slippage = parseFloat(slippage)
+        if (isNaN(slippage) || slippage < 0 || slippage > 100) {
+            throw new Error(`Invalid slippage value: ${slippage} provided`)
+        }
+        if (amount == 0 || slippage == 0) return amount.toString()
+        return toBN(amount)
+            .mul(TEN_THOUSAND.sub(toBN(parseFloat(slippage) * 100)))
+            .div(TEN_THOUSAND)
+            .toString()
+    }
+
+    _process(tokens, isRedeem) {
         Object.keys(tokens).forEach(t => {
             tokens[t] = parseInt(tokens[t])
             if (!tokens[t]) delete tokens[t]
@@ -160,14 +169,14 @@ class DefiDollarClient {
         const peaks = Object.keys(allPeaks)
         for (let i = 0; i < peaks.length; i++) {
             const peak = allPeaks[peaks[i]]
-            const { isValid, isNative, amount } = this._validateTokensForPeak(peak, tokens)
+            const { isValid, isNative, amount } = this._validateTokensForPeak(peak, tokens, isRedeem)
             if (!isValid) continue;
             return { peak, amount, isNative }
         }
         throw new Error(`No supported peak for token combination ${tokens}`)
     }
 
-    _validateTokensForPeak(peak, tokens) {
+    _validateTokensForPeak(peak, tokens, isRedeem) {
         // check native token
         if (tokens[peak.native]) {
             // no other tokens allowed
@@ -184,7 +193,19 @@ class DefiDollarClient {
                 isValid = false
             }
         })
-        if (!isValid) return { isValid }
+        if (!isValid) return { isValid: false }
+
+        if (isRedeem && Object.keys(tokens) == 1) {
+            // redeem in single coin
+            const c = Object.keys(tokens)[0]
+            const index = peak.coins.findIndex(key => key === c)
+            return {
+                isValid: true,
+                redeemInSingleCoin: true,
+                index,
+                amount: scale(tokens[c], 18).toString()
+            }
+        }
 
         // Push coins in the same order as required by the peak
         const amount = []
@@ -195,6 +216,7 @@ class DefiDollarClient {
         })
         return { isValid: true, amount }
     }
+
 
     async _send(txObject, options) {
         if (!options.from) throw new Error('from field is not provided')
