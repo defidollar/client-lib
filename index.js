@@ -108,15 +108,28 @@ class DefiDollarClient {
         } else {
             expectedAmount = await this.peak.methods.calcMint(amount).call()
         }
+        console.log({ expectedAmount, peak: peak.address })
         return { expectedAmount, peak: peak.address }
     }
 
-    async calcExpectedRedeemAmount(dusdAmount) {
-        this.peak.options.address = this.config.contracts.peaks.curveSUSDPool.address
-        return {
-            tokens: await this.peak.methods.calcRedeem(toWei(dusdAmount)).call(),
-            crvPlain3andSUSD: await this.peak.methods.calcRedeemWithScrv(toWei(dusdAmount)).call()
+    async calcExpectedRedeemAmount(dusdAmount, token) {
+        const peak = this.config.contracts.peaks.curveSUSDPool
+        this.peak.options.address = peak.address
+        dusdAmount = toWei(dusdAmount)
+        let txObject
+        if (!token) { // all tokens
+            txObject = this.peak.methods.calcRedeem(dusdAmount)
+        } else if (peak.coins.includes(token)) { // single stablecoin
+            const index = peak.coins.findIndex(key => key === token)
+            txObject = this.peak.methods.calcRedeemInSingleCoin(dusdAmount, index)
+        } else if (token == 'crvPlain3andSUSD') {
+            txObject = this.peak.methods.calcRedeemWithScrv(dusdAmount)
+        } else {
+            throw new Error(`Invalid token id ${token} in calcExpectedRedeemAmount`)
         }
+        const expectedAmount = await txObject.call()
+        console.log({ expectedAmount })
+        return { expectedAmount }
     }
 
     async getAPY(days) {
@@ -180,9 +193,9 @@ class DefiDollarClient {
         const peaks = Object.keys(allPeaks)
         for (let i = 0; i < peaks.length; i++) {
             const peak = allPeaks[peaks[i]]
-            const { isValid, isNative, amount } = this._validateTokensForPeak(peak, tokens, isRedeem)
-            if (!isValid) continue;
-            return { peak, amount, isNative }
+            const validated = this._validateTokensForPeak(peak, tokens, isRedeem)
+            if (!validated.isValid) continue
+            return Object.assign(validated, { peak })
         }
         throw new Error(`No supported peak for token combination ${tokens}`)
     }
@@ -206,7 +219,7 @@ class DefiDollarClient {
         })
         if (!isValid) return { isValid: false }
 
-        if (isRedeem && Object.keys(tokens) == 1) {
+        if (isRedeem && Object.keys(tokens).length == 1) {
             // redeem in single coin
             const c = Object.keys(tokens)[0]
             const index = peak.coins.findIndex(key => key === c)
@@ -261,6 +274,7 @@ class DefiDollarClient {
      * @param token ERC20 token contract
      * @param spender Spender
      * @param amount Amount Pass without having accounted for decimals
+     * @param decimals Decimals to scale the amount with. Otherwise send null
      */
     async approve(token, spender, amount, decimals, options = {}) {
         token = this._processTokenId(token)
@@ -268,7 +282,7 @@ class DefiDollarClient {
         if (!this.IERC20.options.address) throw new Error(`tokenId ${tokenId} is not known`)
         const txObject = this.IERC20.methods.approve(
             spender,
-            scale(amount, decimals).toString()
+            decimals ? scale(amount, decimals).toString() : amount.toString()
         )
         return this._send(txObject, options)
     }
