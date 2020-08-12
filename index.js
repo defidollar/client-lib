@@ -132,9 +132,12 @@ class DefiDollarClient {
         const rewardPerToken = toBN(await this.valley.methods.updateProtocolIncome().call())
 
         // all time
-        const to = toBN(parseInt(Date.now() / 1000))
         let from = toBN(events[0].raw.topics[2].slice(2), 'hex') // first ever event
-        // console.log({ rewardPerToken, year, to, from })
+        let to = toBN(parseInt(Date.now() / 1000))
+        if (to.lte(from)) { // same block
+            to = from.add(toBN(1))
+        }
+        // console.log({ rewardPerToken, year, to: to.toString(), from: from.toString() })
         res.allTime = rewardPerToken.mul(year).div(SCALE_18).div(to.sub(from)).toString()
 
         if (!days) return res
