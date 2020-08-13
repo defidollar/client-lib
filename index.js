@@ -26,6 +26,7 @@ class DefiDollarClient {
      * @param slippage Maximum allowable slippage 0 <= slippage <= 100 %
      */
     mint(tokens, dusdAmount, slippage, options = {}) {
+        console.log('mint', { tokens, dusdAmount, slippage, options })
         const { peak, amount, isNative } = this._process(tokens, false /* isRedeem */)
         let minDusdAmount = this.adjustForSlippage(toWei(dusdAmount), slippage).toString()
         this.peak.options.address = peak.address
@@ -39,6 +40,27 @@ class DefiDollarClient {
     }
 
     /**
+     * @notice calcExpectedAmount of DUSD that will be minted or redeemed
+     * @dev Don't send values scaled with decimals. The following code will handle it.
+     * @param tokens amounts in the format { DAI: '6.1', USDT: '0.2', ... }
+     * @param deposit deposit=true, withdraw=false
+     * @return expectedAmount and address of the chosen peak
+     */
+    async calcExpectedMintAmount(tokens) {
+        console.log('calcExpectedMintAmount', { tokens })
+        const { peak, amount, isNative } = this._process(tokens)
+        this.peak.options.address = peak.address
+        let expectedAmount
+        if (isNative) {
+            expectedAmount = await this.peak.methods.calcMintWithScrv(amount).call()
+        } else {
+            expectedAmount = await this.peak.methods.calcMint(amount).call()
+        }
+        console.log({ expectedAmount, peak: peak.address })
+        return { expectedAmount, peak: peak.address }
+    }
+
+    /**
      * @notice Redeem DUSD
      * @dev Don't send values scaled with decimals. The following code will handle it.
      * @param tokens OutAmounts in the format { DAI: '6.1', USDT: '0.2', ... }
@@ -46,6 +68,7 @@ class DefiDollarClient {
      * @param slippage Maximum allowable slippage 0 <= slippage <= 100
      */
     redeem(dusdAmount, tokens, slippage, options = {}) {
+        console.log('redeem', { dusdAmount, tokens, slippage, options })
         const { peak, amount, isNative, redeemInSingleCoin, index } = this._process(tokens, true /* isRedeem */)
         this.peak.options.address = peak.address
         dusdAmount = toWei(dusdAmount)
@@ -58,6 +81,27 @@ class DefiDollarClient {
             txObject = this.peak.methods.redeem(dusdAmount, amount.map(a => this.adjustForSlippage(a, slippage)))
         }
         return this._send(txObject, options)
+    }
+
+    async calcExpectedRedeemAmount(dusdAmount, token) {
+        console.log('calcExpectedRedeemAmount', { dusdAmount, token })
+        const peak = this.config.contracts.peaks.curveSUSDPool
+        this.peak.options.address = peak.address
+        dusdAmount = toWei(dusdAmount)
+        let txObject
+        if (!token) { // all tokens
+            txObject = this.peak.methods.calcRedeem(dusdAmount)
+        } else if (peak.coins.includes(token)) { // single stablecoin
+            const index = peak.coins.findIndex(key => key === token)
+            txObject = this.peak.methods.calcRedeemInSingleCoin(dusdAmount, index)
+        } else if (token == 'crvPlain3andSUSD') {
+            txObject = this.peak.methods.calcRedeemWithScrv(dusdAmount)
+        } else {
+            throw new Error(`Invalid token id ${token} in calcExpectedRedeemAmount`)
+        }
+        const expectedAmount = await txObject.call()
+        console.log('calcExpectedRedeemAmount', { expectedAmount })
+        return { expectedAmount }
     }
 
     stake(amount, options = {}) {
@@ -90,46 +134,6 @@ class DefiDollarClient {
 
     earned(account) {
         return this.valley.methods.earned(account).call()
-    }
-
-    /**
-     * @notice calcExpectedAmount of DUSD that will be minted or redeemed
-     * @dev Don't send values scaled with decimals. The following code will handle it.
-     * @param tokens amounts in the format { DAI: '6.1', USDT: '0.2', ... }
-     * @param deposit deposit=true, withdraw=false
-     * @return expectedAmount and address of the chosen peak
-     */
-    async calcExpectedMintAmount(tokens) {
-        const { peak, amount, isNative } = this._process(tokens)
-        this.peak.options.address = peak.address
-        let expectedAmount
-        if (isNative) {
-            expectedAmount = await this.peak.methods.calcMintWithScrv(amount).call()
-        } else {
-            expectedAmount = await this.peak.methods.calcMint(amount).call()
-        }
-        console.log({ expectedAmount, peak: peak.address })
-        return { expectedAmount, peak: peak.address }
-    }
-
-    async calcExpectedRedeemAmount(dusdAmount, token) {
-        const peak = this.config.contracts.peaks.curveSUSDPool
-        this.peak.options.address = peak.address
-        dusdAmount = toWei(dusdAmount)
-        let txObject
-        if (!token) { // all tokens
-            txObject = this.peak.methods.calcRedeem(dusdAmount)
-        } else if (peak.coins.includes(token)) { // single stablecoin
-            const index = peak.coins.findIndex(key => key === token)
-            txObject = this.peak.methods.calcRedeemInSingleCoin(dusdAmount, index)
-        } else if (token == 'crvPlain3andSUSD') {
-            txObject = this.peak.methods.calcRedeemWithScrv(dusdAmount)
-        } else {
-            throw new Error(`Invalid token id ${token} in calcExpectedRedeemAmount`)
-        }
-        const expectedAmount = await txObject.call()
-        console.log({ expectedAmount })
-        return { expectedAmount }
     }
 
     async getAPY(days) {
@@ -186,8 +190,8 @@ class DefiDollarClient {
 
     _process(tokens, isRedeem) {
         Object.keys(tokens).forEach(t => {
-            tokens[t] = parseInt(tokens[t])
-            if (!tokens[t]) delete tokens[t]
+            tokens[t] = parseFloat(tokens[t])
+            if (!tokens[t] || isNaN(tokens[t])) delete tokens[t]
         })
         const allPeaks = this.config.contracts.peaks
         const peaks = Object.keys(allPeaks)
@@ -205,7 +209,7 @@ class DefiDollarClient {
         if (tokens[peak.native]) {
             // no other tokens allowed
             if (Object.keys(tokens).length > 1) {
-                throw new Error(`Native tokens ${peak.native} provided with other tokens ${tokens}`)
+                throw new Error(`Native tokens ${peak.native} provided with other tokens ${tokens.toString()}`)
             }
             return { isValid: true, isNative: true, amount: scale(tokens[peak.native], 18).toString() }
         }
@@ -223,11 +227,12 @@ class DefiDollarClient {
             // redeem in single coin
             const c = Object.keys(tokens)[0]
             const index = peak.coins.findIndex(key => key === c)
+            console.log('redeem in single coin', tokens)
             return {
                 isValid: true,
                 redeemInSingleCoin: true,
                 index,
-                amount: scale(tokens[c], 18).toString()
+                amount: scale(tokens[c], this.config.contracts.tokens[c].decimals).toString()
             }
         }
 
