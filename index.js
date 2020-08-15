@@ -119,21 +119,19 @@ class DefiDollarClient {
     }
 
     getReward(options = {}) {
-        return this._send(
-            this.valley.methods.getReward(),
-            options
-        )
+        return this._send(this.valley.methods.getReward(), options)
     }
 
     exit(options = {}) {
-        return this._send(
-            this.valley.methods.exit(),
-            options
-        )
+        return this._send(this.valley.methods.exit(), options)
     }
 
     earned(account) {
         return this.valley.methods.earned(account).call()
+    }
+
+    withdrawAble(account) {
+        return this.valley.methods.withdrawAble(account).call()
     }
 
     async getAPY(days) {
