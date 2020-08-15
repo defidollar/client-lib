@@ -1,7 +1,7 @@
 var fs = require('fs');
 var files = fs.readdirSync('artifacts');
 
-const contracts = ['ERC20Detailed.json', 'IPeak.json', 'StakeLPToken.json']
+const contracts = ['ERC20Detailed.json', 'CurveSusdPeak.json', 'StakeLPToken.json']
 
 const artifacts = fs.readdirSync(`artifacts`)
   artifacts.forEach(a => {
