@@ -1,6 +1,6 @@
 {
   "name": "@defidollar/core-client-lib",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Client library for the defidollar smart contracts",
   "repository": "https://github.com/defidollar/core-client-lib",
   "main": "index.js",
