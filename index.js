@@ -249,7 +249,7 @@ class DefiDollarClient {
         if (!options.from) throw new Error('from field is not provided')
         if (!options.gasLimit) {
             const gasLimit = parseInt(await txObject.estimateGas({ from: options.from }))
-            options.gasLimit = parseInt(gasLimit * 1.5)
+            options.gasLimit = parseInt(gasLimit * 1.2)
         }
         options.gasPrice = options.gasPrice || await this.web3.eth.getGasPrice()
         if (options.transactionHash == true) {
