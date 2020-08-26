@@ -26,7 +26,7 @@ class DefiDollarClient {
      * @param slippage Maximum allowable slippage 0 <= slippage <= 100 %
      */
     mint(tokens, dusdAmount, slippage, options = {}) {
-        console.log('mint', { tokens, dusdAmount, slippage, options })
+        // console.log('mint', { tokens, dusdAmount, slippage, options })
         const { peak, amount, isNative } = this._process(tokens, false /* isRedeem */)
         let minDusdAmount = this.adjustForSlippage(toWei(dusdAmount), slippage).toString()
         this.peak.options.address = peak.address
@@ -68,7 +68,7 @@ class DefiDollarClient {
      * @param slippage Maximum allowable slippage 0 <= slippage <= 100
      */
     redeem(dusdAmount, tokens, slippage, options = {}) {
-        console.log('redeem', { dusdAmount, tokens, slippage, options })
+        // console.log('redeem', { dusdAmount, tokens, slippage, options })
         const { peak, amount, isNative, redeemInSingleCoin, index } = this._process(tokens, true /* isRedeem */)
         this.peak.options.address = peak.address
         dusdAmount = toWei(dusdAmount)
@@ -252,7 +252,18 @@ class DefiDollarClient {
             options.gasLimit = parseInt(gasLimit * 1.5)
         }
         options.gasPrice = options.gasPrice || await this.web3.eth.getGasPrice()
+        if (options.transactionHash == true) {
+            return this._wrapWeb3Promise(txObject.send(options))
+        }
         return txObject.send(options)
+    }
+
+    _wrapWeb3Promise(obj) {
+        return new Promise((resolve, reject) => {
+            obj
+            .on('transactionHash', txHash => resolve(txHash))
+            .on('error', err => reject(err))
+        })
     }
 
     // ##### Common Functions #####
