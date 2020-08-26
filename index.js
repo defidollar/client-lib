@@ -188,8 +188,7 @@ class DefiDollarClient {
 
     _process(tokens, isRedeem) {
         Object.keys(tokens).forEach(t => {
-            tokens[t] = parseFloat(tokens[t])
-            if (!tokens[t] || isNaN(tokens[t])) delete tokens[t]
+            if (!tokens[t] || isNaN(parseFloat(tokens[t]))) delete tokens[t]
         })
         const allPeaks = this.config.contracts.peaks
         const peaks = Object.keys(allPeaks)
