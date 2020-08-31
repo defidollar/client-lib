@@ -3,6 +3,7 @@ const Web3 = require('web3')
 const IERC20 = require('./artifacts/ERC20Detailed.json')
 const IPeak = require('./artifacts/CurveSusdPeak.json')
 const StakeLPToken = require('./artifacts/StakeLPToken.json')
+const Core = require('./artifacts/Core.json')
 
 const toBN = Web3.utils.toBN
 const toWei = Web3.utils.toWei
@@ -15,6 +16,7 @@ class DefiDollarClient {
         this.config = config
         this.IERC20 = new this.web3.eth.Contract(IERC20.abi)
         this.peak = new this.web3.eth.Contract(IPeak.abi)
+        this.core = new this.web3.eth.Contract(Core.abi, config.contracts.base)
         this.valley = new this.web3.eth.Contract(StakeLPToken.abi, config.contracts.valley)
     }
 
@@ -172,6 +174,11 @@ class DefiDollarClient {
             .div(to.sub(toBN(events[index].raw.topics[2].slice(2), 'hex')))
             .toString()
         return res
+    }
+
+    async ceiling() {
+        const { ceiling } = await this.core.methods.peaks(this.config.contracts.peaks.curveSUSDPool.address).call()
+        return ceiling.toString()
     }
 
     adjustForSlippage(amount, slippage) {
