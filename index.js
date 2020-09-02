@@ -177,18 +177,14 @@ class DefiDollarClient {
     }
 
     async ceiling() {
-        const { ceiling } = await this.core.methods.peaks(this.config.contracts.peaks.curveSUSDPool.address).call()
-        return ceiling.toString()
-    }
-
-    async available() {
         let { ceiling, amount } = await this.core.methods.peaks(this.config.contracts.peaks.curveSUSDPool.address).call()
         ceiling = toBN(ceiling)
         amount = toBN(amount)
+        let available = 0
         if (ceiling.gt(amount)) {
-            return ceiling.sub(amount).toString()
+            available = ceiling.sub(amount).toString()
         }
-        return 0
+        return { ceiling: ceiling.toString(), available }
     }
 
     adjustForSlippage(amount, slippage) {
