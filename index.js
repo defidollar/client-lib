@@ -87,7 +87,7 @@ class DefiDollarClient {
 
     async calcExpectedRedeemAmount(dusdAmount, token) {
         console.log('calcExpectedRedeemAmount', { dusdAmount, token })
-        const peak = this.config.contracts.peaks.curveSUSDPool
+        const peak = this.config.contracts.peaks.swerveTUSDPool
         this.peak.options.address = peak.address
         dusdAmount = toWei(dusdAmount)
         let txObject
@@ -96,7 +96,7 @@ class DefiDollarClient {
         } else if (peak.coins.includes(token)) { // single stablecoin
             const index = peak.coins.findIndex(key => key === token)
             txObject = this.peak.methods.calcRedeemInSingleCoin(dusdAmount, index)
-        } else if (token == 'crvPlain3andSUSD') {
+        } else if (token == 'swUSD') {
             txObject = this.peak.methods.calcRedeemWithScrv(dusdAmount)
         } else {
             throw new Error(`Invalid token id ${token} in calcExpectedRedeemAmount`)
@@ -177,7 +177,7 @@ class DefiDollarClient {
     }
 
     async ceiling() {
-        let { ceiling, amount } = await this.core.methods.peaks(this.config.contracts.peaks.curveSUSDPool.address).call()
+        let { ceiling, amount } = await this.core.methods.peaks(this.config.contracts.peaks.swerveTUSDPool.address).call()
         ceiling = toBN(ceiling)
         amount = toBN(amount)
         let available = 0
