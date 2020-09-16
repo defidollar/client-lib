@@ -1,7 +1,9 @@
 const Web3 = require('web3')
+const assert = require('assert').strict;
 
 const IERC20 = require('./artifacts/ERC20Detailed.json')
-const IPeak = require('./artifacts/CurveSusdPeak.json')
+const IPeak = require('./artifacts/YVaultPeak.json')
+const zap = require('./artifacts/YVaultZap.json')
 const StakeLPToken = require('./artifacts/StakeLPToken.json')
 const Core = require('./artifacts/Core.json')
 
@@ -14,8 +16,10 @@ class DefiDollarClient {
     constructor(web3, config) {
         this.web3 = web3 || new Web3()
         this.config = config
+        this.yVaultPeak = this.config.contracts.peaks.yVaultPeak
         this.IERC20 = new this.web3.eth.Contract(IERC20.abi)
-        this.peak = new this.web3.eth.Contract(IPeak.abi)
+        this.peak = new this.web3.eth.Contract(IPeak.abi, this.yVaultPeak.address)
+        this.zap = new this.web3.eth.Contract(zap.abi, this.yVaultPeak.zap)
         this.core = new this.web3.eth.Contract(Core.abi, config.contracts.base)
         this.valley = new this.web3.eth.Contract(StakeLPToken.abi, config.contracts.valley)
     }
@@ -29,14 +33,20 @@ class DefiDollarClient {
      */
     mint(tokens, dusdAmount, slippage, options = {}) {
         // console.log('mint', { tokens, dusdAmount, slippage, options })
-        const { peak, amount, isNative } = this._process(tokens, false /* isRedeem */)
-        let minDusdAmount = this.adjustForSlippage(toWei(dusdAmount), slippage).toString()
-        this.peak.options.address = peak.address
+        this._sanitizeTokens(tokens)
         let txObject
-        if (isNative) {
-            txObject = this.peak.methods.mintWithScrv(amount, minDusdAmount)
-        } else {
-            txObject = this.peak.methods.mint(amount, minDusdAmount)
+        if (Object.keys(tokens).length === 1 && (tokens.yCRV || tokens.yUSD)) {
+            if (tokens.yCRV) {
+                txObject = this.peak.methods.mintWithYcrv(scale(tokens.yCRV, 18).toString())
+            } else if (tokens.yUSD) {
+                txObject = this.peak.methods.mintWithYusd(scale(tokens.yUSD, 18).toString())
+            }
+        } else { // mint with 1 or more of the vanilla coins
+            const minDusdAmount = this.adjustForSlippage(scale(dusdAmount, 18), slippage).toString()
+            txObject = this.zap.methods.mint(this._processAmounts(tokens), minDusdAmount)
+        }
+        if (!txObject) {
+            throw new Error(`couldn't find a suitable combination with tokens ${tokens.toString()}`)
         }
         return this._send(txObject, options)
     }
@@ -50,16 +60,38 @@ class DefiDollarClient {
      */
     async calcExpectedMintAmount(tokens) {
         console.log('calcExpectedMintAmount', { tokens })
-        const { peak, amount, isNative } = this._process(tokens)
-        this.peak.options.address = peak.address
+        this._sanitizeTokens(tokens)
         let expectedAmount
-        if (isNative) {
-            expectedAmount = await this.peak.methods.calcMintWithScrv(amount).call()
-        } else {
-            expectedAmount = await this.peak.methods.calcMint(amount).call()
+        if (Object.keys(tokens).length === 1 && (tokens.yCRV || tokens.yUSD)) {
+            if (tokens.yCRV) {
+                expectedAmount = await this.peak.methods.calcMintWithYcrv(scale(tokens.yCRV, 18)).call()
+            } else if (tokens.yUSD) {
+                expectedAmount = await this.peak.methods.calcMintWithYusd(scale(tokens.yUSD, 18)).call()
+            }
+            return { expectedAmount, peak: this.yVaultPeak.address }
         }
-        console.log({ expectedAmount, peak: peak.address })
-        return { expectedAmount, peak: peak.address }
+        expectedAmount = await this.zap.methods.calcMint(this._processAmounts(tokens)).call()
+        return { expectedAmount, peak: this.zap.options.address }
+    }
+
+    _sanitizeTokens(tokens) {
+        Object.keys(tokens).forEach(t => {
+            if (!tokens[t] || isNaN(parseFloat(tokens[t]))) delete tokens[t]
+        })
+    }
+
+    _processAmounts(tokens) {
+        Object.keys(tokens).forEach(t => assert.ok(this.yVaultPeak.coins.includes(t), 'bad coins'))
+        const inAmounts = new Array(4)
+        for(let i = 0; i < this.yVaultPeak.coins.length; i++) {
+            const c = this.yVaultPeak.coins[i]
+            if (tokens[c]) {
+                inAmounts[i] = scale(tokens[c], this.config.contracts.tokens[c].decimals).toString()
+            } else {
+                inAmounts[i] = 0
+            }
+        }
+        return inAmounts
     }
 
     /**
@@ -70,39 +102,51 @@ class DefiDollarClient {
      * @param slippage Maximum allowable slippage 0 <= slippage <= 100
      */
     redeem(dusdAmount, tokens, slippage, options = {}) {
-        // console.log('redeem', { dusdAmount, tokens, slippage, options })
-        const { peak, amount, isNative, redeemInSingleCoin, index } = this._process(tokens, true /* isRedeem */)
-        this.peak.options.address = peak.address
-        dusdAmount = toWei(dusdAmount)
+        this._sanitizeTokens(tokens)
         let txObject
-        if (isNative) {
-            txObject = this.peak.methods.redeemInScrv(dusdAmount, this.adjustForSlippage(amount, slippage))
-        } else if (redeemInSingleCoin) {
-            txObject = this.peak.methods.redeemInSingleCoin(dusdAmount, index, this.adjustForSlippage(amount, slippage))
+        dusdAmount = toWei(dusdAmount)
+        if (Object.keys(tokens).length === 1) {
+            if (tokens.yCRV) {
+                txObject = this.peak.methods.redeemInYcrv(
+                    dusdAmount,
+                    this.adjustForSlippage(scale(tokens.yCRV, 18), slippage)
+                )
+            } else if (tokens.yUSD) {
+                txObject = this.peak.methods.redeemInYusd(
+                    dusdAmount,
+                    this.adjustForSlippage(scale(tokens.yUSD, 18), slippage)
+                )
+            } else {
+                const token = Object.keys(tokens)[0]
+                const index = this.yVaultPeak.coins.findIndex(key => key === token)
+                txObject = this.zap.methods.redeemInSingleCoin(dusdAmount, index, this.adjustForSlippage(tokens[token], slippage))
+            }
         } else {
-            txObject = this.peak.methods.redeem(dusdAmount, amount.map(a => this.adjustForSlippage(a, slippage)))
+            txObject = this.zap.methods.redeem(
+                dusdAmount,
+                this._processAmounts(tokens).map(a => this.adjustForSlippage(a, slippage))
+            )
         }
         return this._send(txObject, options)
     }
 
     async calcExpectedRedeemAmount(dusdAmount, token) {
         console.log('calcExpectedRedeemAmount', { dusdAmount, token })
-        const peak = this.config.contracts.peaks.curveSUSDPool
-        this.peak.options.address = peak.address
         dusdAmount = toWei(dusdAmount)
         let txObject
         if (!token) { // all tokens
-            txObject = this.peak.methods.calcRedeem(dusdAmount)
-        } else if (peak.coins.includes(token)) { // single stablecoin
-            const index = peak.coins.findIndex(key => key === token)
-            txObject = this.peak.methods.calcRedeemInSingleCoin(dusdAmount, index)
-        } else if (token == 'crvPlain3andSUSD') {
-            txObject = this.peak.methods.calcRedeemWithScrv(dusdAmount)
+            txObject = this.zap.methods.calcRedeem(dusdAmount)
+        } else if (this.yVaultPeak.coins.includes(token)) { // single stablecoin
+            const index = this.yVaultPeak.coins.findIndex(key => key === token)
+            txObject = this.zap.methods.calcRedeemInSingleCoin(dusdAmount, index)
+        } else if (token == 'yCRV') {
+            txObject = this.peak.methods.calcRedeemInYcrv(dusdAmount)
+        } else if (token == 'yUSD') {
+            txObject = this.peak.methods.calcRedeemInYusd(dusdAmount)
         } else {
             throw new Error(`Invalid token id ${token} in calcExpectedRedeemAmount`)
         }
         const expectedAmount = await txObject.call()
-        console.log('calcExpectedRedeemAmount', { expectedAmount })
         return { expectedAmount }
     }
 
@@ -192,70 +236,13 @@ class DefiDollarClient {
         if (isNaN(slippage) || slippage < 0 || slippage > 100) {
             throw new Error(`Invalid slippage value: ${slippage} provided`)
         }
-        if (amount == 0 || slippage == 0) return amount.toString()
+        amount = toBN(amount)
+        if (amount.eq(toBN(0)) || slippage == 0) return amount.toString()
         return toBN(amount)
             .mul(TEN_THOUSAND.sub(toBN(parseFloat(slippage) * 100)))
             .div(TEN_THOUSAND)
             .toString()
     }
-
-    _process(tokens, isRedeem) {
-        Object.keys(tokens).forEach(t => {
-            if (!tokens[t] || isNaN(parseFloat(tokens[t]))) delete tokens[t]
-        })
-        const allPeaks = this.config.contracts.peaks
-        const peaks = Object.keys(allPeaks)
-        for (let i = 0; i < peaks.length; i++) {
-            const peak = allPeaks[peaks[i]]
-            const validated = this._validateTokensForPeak(peak, tokens, isRedeem)
-            if (!validated.isValid) continue
-            return Object.assign(validated, { peak })
-        }
-        throw new Error(`No supported peak for token combination ${tokens}`)
-    }
-
-    _validateTokensForPeak(peak, tokens, isRedeem) {
-        // check native token
-        if (tokens[peak.native]) {
-            // no other tokens allowed
-            if (Object.keys(tokens).length > 1) {
-                throw new Error(`Native tokens ${peak.native} provided with other tokens ${tokens.toString()}`)
-            }
-            return { isValid: true, isNative: true, amount: scale(tokens[peak.native], 18).toString() }
-        }
-
-        // should only have coins that the peak supports
-        let isValid = true
-        Object.keys(tokens).forEach(t => {
-            if (!peak.coins.includes(t)) {
-                isValid = false
-            }
-        })
-        if (!isValid) return { isValid: false }
-
-        if (isRedeem && Object.keys(tokens).length == 1) {
-            // redeem in single coin
-            const c = Object.keys(tokens)[0]
-            const index = peak.coins.findIndex(key => key === c)
-            console.log('redeem in single coin', tokens)
-            return {
-                isValid: true,
-                redeemInSingleCoin: true,
-                index,
-                amount: scale(tokens[c], this.config.contracts.tokens[c].decimals).toString()
-            }
-        }
-
-        // Push coins in the same order as required by the peak
-        const amount = []
-        peak.coins.forEach(c => {
-            amount.push(
-                tokens[c] ? scale(tokens[c], this.config.contracts.tokens[c].decimals).toString() : 0
-            )
-        })
-        return { isValid: true, amount }
-    }
-
 
     async _send(txObject, options) {
         if (!options.from) throw new Error('from field is not provided')
