@@ -42,7 +42,7 @@ class DefiDollarClient {
                 txObject = this.peak.methods.mintWithYusd(scale(tokens.yUSD, 18).toString())
             }
         } else { // mint with 1 or more of the vanilla coins
-            const minDusdAmount = this.adjustForSlippage(scale(dusdAmount, 18), slippage).toString()
+            const minDusdAmount = this.adjustForSlippage(dusdAmount, 18, slippage).toString()
             txObject = this.zap.methods.mint(this._processAmounts(tokens), minDusdAmount)
         }
         if (!txObject) {
@@ -109,22 +109,26 @@ class DefiDollarClient {
             if (tokens.yCRV) {
                 txObject = this.peak.methods.redeemInYcrv(
                     dusdAmount,
-                    this.adjustForSlippage(scale(tokens.yCRV, 18), slippage)
+                    this.adjustForSlippage(tokens.yCRV, 18, slippage)
                 )
             } else if (tokens.yUSD) {
                 txObject = this.peak.methods.redeemInYusd(
                     dusdAmount,
-                    this.adjustForSlippage(scale(tokens.yUSD, 18), slippage)
+                    this.adjustForSlippage(tokens.yUSD, 18, slippage)
                 )
             } else {
-                const token = Object.keys(tokens)[0]
-                const index = this.yVaultPeak.coins.findIndex(key => key === token)
-                txObject = this.zap.methods.redeemInSingleCoin(dusdAmount, index, this.adjustForSlippage(tokens[token], slippage))
+                const c = Object.keys(tokens)[0]
+                const index = this.yVaultPeak.coins.findIndex(key => key === c)
+                txObject = this.zap.methods.redeemInSingleCoin(
+                    dusdAmount,
+                    index,
+                    this.adjustForSlippage(tokens[c], this.config.contracts.tokens[c].decimals, slippage)
+                )
             }
         } else {
             txObject = this.zap.methods.redeem(
                 dusdAmount,
-                this._processAmounts(tokens).map(a => this.adjustForSlippage(a, slippage))
+                this._processAmounts(tokens).map(a => this.adjustForSlippage(a, null, slippage))
             )
         }
         return this._send(txObject, options)
@@ -231,12 +235,12 @@ class DefiDollarClient {
         return { ceiling: ceiling.toString(), available }
     }
 
-    adjustForSlippage(amount, slippage) {
+    adjustForSlippage(amount, decimals, slippage) {
         slippage = parseFloat(slippage)
         if (isNaN(slippage) || slippage < 0 || slippage > 100) {
             throw new Error(`Invalid slippage value: ${slippage} provided`)
         }
-        amount = toBN(amount)
+        amount = decimals ? scale(amount, decimals) : toBN(amount)
         if (amount.eq(toBN(0)) || slippage == 0) return amount.toString()
         return toBN(amount)
             .mul(TEN_THOUSAND.sub(toBN(parseFloat(slippage) * 100)))
