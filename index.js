@@ -225,7 +225,7 @@ class DefiDollarClient {
     }
 
     async ceiling() {
-        let { ceiling, amount } = await this.core.methods.peaks(this.config.contracts.peaks.curveSUSDPool.address).call()
+        let { ceiling, amount } = await this.core.methods.peaks(this.config.contracts.peaks.yVaultPeak.address).call()
         ceiling = toBN(ceiling)
         amount = toBN(amount)
         let available = 0
