@@ -7,7 +7,8 @@ const contracts = [
   'YVaultZap.json',
   'StakeLPToken.json',
   'Core.json',
-  'DFDRewards.json'
+  'DFDRewards.json',
+  'TokenVesting.json'
 ]
 
 const artifacts = fs.readdirSync(`artifacts`)
