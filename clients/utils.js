@@ -16,5 +16,6 @@ function scale(num, decimals) {
 module.exports = {
     scale,
     toWei: Web3.utils.toWei,
+    toBN: Web3.utils.toBN,
     ZEROAddress: '0x0000000000000000000000000000000000000000'
 }

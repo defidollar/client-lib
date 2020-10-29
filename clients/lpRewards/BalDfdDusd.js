@@ -7,6 +7,7 @@ const IERC20 = require('../../artifacts/ERC20Detailed.json')
 class BalDfdDusd {
     constructor(web3, config) {
         web3 = web3 || new Web3()
+        this.web3 = web3
         this.web3Client = new Web3Client(web3)
         this.config = config
         this.rewards = new web3.eth.Contract(DFDRewards.abi, config.contracts.genesis)
@@ -22,13 +23,13 @@ class BalDfdDusd {
         if (_bpool == utils.ZEROAddress) {
             throw new Error('Pool is not yet ready')
         }
-        this.bpt = new web3.eth.Contract(IERC20.abi, _bpool)
+        this.bpt = new this.web3.eth.Contract(IERC20.abi, _bpool)
     }
 
     stake(amount, options = {}) {
+        // gas estimate for stake is inaccurate for some reason
         if (!options.gas) {
-            // gas estimate for withdraw is inaccurate for some reason
-            options.gas = 2000000
+            options.gas = 200000
         }
         return this.web3Client.send(
             this.rewards.methods.stake(utils.scale(amount, 18).toString()),
@@ -37,9 +38,9 @@ class BalDfdDusd {
     }
 
     withdraw(amount, options = {}) {
+        // gas estimate for withdraw is inaccurate for some reason
         if (!options.gas) {
-            // gas estimate for withdraw is inaccurate for some reason
-            options.gas = 2000000
+            options.gas = 200000
         }
         return this.web3Client.send(
             this.rewards.methods.withdraw(utils.scale(amount, 18).toString()),
@@ -55,15 +56,16 @@ class BalDfdDusd {
         return this.web3Client.send(this.rewards.methods.exit(), options)
     }
 
-    earned(account) {
-        return this.rewards.methods.earned(account).call()
+    async getAccountInfo(account) {
+        const [ staked, withdrawAble, earned, balanceOf ] = await Promise.all([
+            this.rewards.methods.balanceOf(account).call(),
+            this.rewards.methods.withdrawAble(account).call(),
+            this.rewards.methods.earned(account).call(),
+            this.balanceOf(account)
+        ])
+        return { staked, withdrawAble, earned, balanceOf }
     }
 
-    withdrawAble(account) {
-        return this.rewards.methods.withdrawAble(account).call()
-    }
-
-    // Balance of BPT that is staked in this LP contract
     balanceOf(account) {
         return this.bpt.methods.balanceOf(account).call()
     }
@@ -76,10 +78,10 @@ class BalDfdDusd {
      * @notice approve
      * @param amount Amount without having accounted for decimals
      */
-    approve(amount, options = {}) {
+    approve(amount, options = {}, trust = false) {
         const txObject = this.bpt.methods.approve(
             this.rewards.options.address,
-            utils.scale(amount, 18).toString()
+            trust ? amount : utils.scale(amount, 18).toString()
         )
         return this.web3Client.send(txObject, options)
     }
