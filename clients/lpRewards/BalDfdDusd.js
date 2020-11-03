@@ -1,8 +1,11 @@
 const Web3Client = require('../Web3Client')
 const utils = require('../utils')
+const web3 = require('web3')
 
 const DFDRewards = require('../../artifacts/DFDRewards.json')
 const IERC20 = require('../../artifacts/ERC20Detailed.json')
+
+const toBN = web3.utils.toBN
 
 class BalDfdDusd {
     constructor(web3, config) {
@@ -65,6 +68,42 @@ class BalDfdDusd {
         ])
         return { staked, withdrawAble, earned, balanceOf }
     }
+
+    // Bal pool info methods
+
+    totalSupply() {
+        return this.bpt.methods.totalSupply().call()
+    }
+
+    staked() {
+        return this.balanceOf(this.rewards.options.address)
+    }
+
+    poolAddress() {
+        return this.bpt.options.address
+    }
+
+    async composition(account) {
+        const _dfd = new this.web3.eth.Contract(IERC20.abi, this.config.contracts.tokens.DFD.address)
+        const _dusd = new this.web3.eth.Contract(IERC20.abi, this.config.contracts.tokens.DUSD.address)
+        let [ totalSupply, dfd, dusd, balanceOf ] = await Promise.all([
+            this.totalSupply(),
+            _dfd.methods.balanceOf(this.bpt.options.address).call(),
+            _dusd.methods.balanceOf(this.bpt.options.address).call(),
+            this.rewards.methods.balanceOf(account).call(),
+        ])
+        totalSupply = toBN(totalSupply)
+        const poolShare = toBN(balanceOf).mul(toBN(1e6)).div(totalSupply)
+        const a = {
+            share: poolShare.div(toBN(1e4)).toString(), // 100x % multiplier
+            dfd: toBN(dfd).mul(poolShare).div(toBN(1e6)).toString(),
+            dusd: toBN(dusd).mul(poolShare).div(toBN(1e6)).toString()
+        }
+        console.log(a)
+        return a
+    }
+
+    // Helper methods
 
     balanceOf(account) {
         return this.bpt.methods.balanceOf(account).call()
