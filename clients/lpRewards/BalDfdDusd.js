@@ -12,8 +12,8 @@ class BalDfdDusd extends SnxStyleRewards {
         super(
             web3,
             config,
-            config.lpRewards.balDfdDusd.rewardsContract,
-            config.lpRewards.balDfdDusd.lpToken
+            config.contracts.lpRewards.balDfdDusd.rewardsContract,
+            config.contracts.lpRewards.balDfdDusd.lpToken
         )
     }
 
