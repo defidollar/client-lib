@@ -2,6 +2,7 @@ const Web3 = require('web3')
 
 const toBN = Web3.utils.toBN
 const toWei = Web3.utils.toWei
+const fromWei = Web3.utils.fromWei
 
 function scale(num, decimals) {
     num = toBN(toWei(num.toString()))
@@ -15,7 +16,8 @@ function scale(num, decimals) {
 
 module.exports = {
     scale,
-    toWei: Web3.utils.toWei,
-    toBN: Web3.utils.toBN,
+    toWei,
+    toBN,
+    fromWei,
     ZEROAddress: '0x0000000000000000000000000000000000000000'
 }
