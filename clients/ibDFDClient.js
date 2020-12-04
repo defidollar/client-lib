@@ -2,7 +2,7 @@ const Web3 = require('web3')
 
 const Web3Client = require('./Web3Client')
 
-const ibDfd = require('../artifacts/ibDfd.json')
+const ibDfd = require('../artifacts/ibDFD.json')
 const IERC20 = require('../artifacts/ERC20Detailed.json')
 const utils = require('./utils')
 const { toBN, toWei, fromWei } = utils
