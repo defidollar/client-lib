@@ -8,7 +8,8 @@ const contracts = [
   'Core.json',
   'DFDRewards.json',
   'TokenVesting.json',
-  'ibDUSD.json'
+  'ibDUSD.json',
+  'ibDFD.json'
 ]
 
 const artifacts = fs.readdirSync(`artifacts`)
