@@ -6,8 +6,6 @@ module.exports = {
   LPRewards: {
     SnxStyleRewards: require("./clients/lpRewards/SnxStyleRewards"),
     BalDfdDusdClient: require("./clients/lpRewards/BalDfdDusd"),
-    VestingClient: require("./clients/lpRewards/Vesting"),
-    UniDfdDusdClient: require("./clients/lpRewards/UniDfdDusd"),
-    UniDfdEthClient: require("./clients/lpRewards/UniDfdEth"),
-  },
+    VestingClient: require("./clients/lpRewards/Vesting")
+  }
 };
