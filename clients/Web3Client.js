@@ -7,8 +7,7 @@ class Web3Client {
         if (!options.from) throw new Error('from field is not provided')
         if (!options.gas) {
             const gasLimit = parseInt(await txObject.estimateGas({ from: options.from }))
-            // console.log({ gas: gasLimit })
-            options.gas = parseInt(gasLimit * 1.2)
+            options.gas = parseInt(gasLimit * 1.5)
         }
         options.gasPrice = options.gasPrice || await this.web3.eth.getGasPrice()
         if (options.transactionHash == true) {
