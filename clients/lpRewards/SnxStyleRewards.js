@@ -38,13 +38,19 @@ class SnxStyleRewards {
         return this.web3Client.hackySend(this.rewards.methods.exit(), options)
     }
 
-    async getAccountInfo(account) {
-        const [ staked, earned, balanceOf ] = await Promise.all([
+    async getAccountInfo(account, poolType) {
+        const [ staked, dfdEarned, balanceOf ] = await Promise.all([
             this.rewards.methods.balanceOf(account).call(),
             this.rewards.methods.earned(account).call(),
             this.balanceOf(account)
         ])
-        return { staked, earned, balanceOf }
+        const res = { staked, dfdEarned, balanceOf }
+        if (poolType === 'sushi') {
+            res.otherEarned = await this.rewards.methods.sushiEarned(account).call()
+        } else if (poolType === 'front') {
+            res.otherEarned = await this.rewards.methods.frontEarned(account).call()
+        }
+        return res
     }
 
     /* #### Pool info methods #### */
