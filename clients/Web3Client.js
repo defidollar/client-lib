@@ -16,6 +16,11 @@ class Web3Client {
         return txObject.send(options)
     }
 
+    async hackySend(txObject, options) {
+        options.gas = Math.max(412000, options.gas || 0)
+        return this.send(txObject, options)
+    }
+
     _wrapWeb3Promise(obj) {
         return new Promise((resolve, reject) => {
             obj

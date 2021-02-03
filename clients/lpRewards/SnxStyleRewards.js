@@ -17,33 +17,25 @@ class SnxStyleRewards {
     }
 
     stake(amount, options = {}) {
-        // gas estimate for stake is inaccurate for some reason
-        if (!options.gas) {
-            options.gas = 200000
-        }
-        return this.web3Client.send(
+        return this.web3Client.hackySend(
             this.rewards.methods.stake(utils.scale(amount, 18).toString()),
             options
         )
     }
 
     withdraw(amount, options = {}) {
-        // gas estimate for withdraw is inaccurate for some reason
-        if (!options.gas) {
-            options.gas = 200000
-        }
-        return this.web3Client.send(
+        return this.web3Client.hackySend(
             this.rewards.methods.withdraw(utils.scale(amount, 18).toString()),
             options
         )
     }
 
     getReward(options = {}) {
-        return this.web3Client.send(this.rewards.methods.getReward(), options)
+        return this.web3Client.hackySend(this.rewards.methods.getReward(), options)
     }
 
     exit(options = {}) {
-        return this.web3Client.send(this.rewards.methods.exit(), options)
+        return this.web3Client.hackySend(this.rewards.methods.exit(), options)
     }
 
     async getAccountInfo(account) {
