@@ -5,10 +5,8 @@ class Web3Client {
 
     async send(txObject, options) {
         if (!options.from) throw new Error('from field is not provided')
-        if (!options.gas) {
-            const gasLimit = parseInt(await txObject.estimateGas({ from: options.from }))
-            options.gas = parseInt(gasLimit * 1.5)
-        }
+        const gasLimit = parseInt(await txObject.estimateGas({ from: options.from }))
+        options.gas = Math.max(parseInt(gasLimit * 1.5), options.gas || 0)
         options.gasPrice = options.gasPrice || await this.web3.eth.getGasPrice()
         if (options.transactionHash == true) {
             return this._wrapWeb3Promise(txObject.send(options))
@@ -16,8 +14,8 @@ class Web3Client {
         return txObject.send(options)
     }
 
-    async hackySend(txObject, options) {
-        options.gas = Math.max(412000, options.gas || 0)
+    async hackySend(txObject, options, gas = 412000) {
+        options.gas = Math.max(gas, options.gas || 0)
         return this.send(txObject, options)
     }
 
