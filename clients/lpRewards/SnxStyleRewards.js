@@ -35,7 +35,7 @@ class SnxStyleRewards {
     }
 
     exit(options = {}) {
-        return this.web3Client.hackySend(this.rewards.methods.exit(), options)
+        return this.web3Client.hackySend(this.rewards.methods.exit(), options, 650000)
     }
 
     async getAccountInfo(account, poolType) {
