@@ -37,6 +37,7 @@ class SavingsClient extends ClientBase {
      * @param {*} slippage Maximum allowable slippage 0 <= slippage <= 100 %
      */
     mintAndDeposit(tokens, dusdAmount, slippage, options = {}) {
+        this._sanitizeTokens(tokens)
         const minDusdAmount = this.adjustForSlippage(dusdAmount, 18, slippage).toString()
         const txObject = this.zap.methods.deposit(this._processAmounts(tokens), minDusdAmount)
         return this.web3Client.send(txObject, options)

@@ -74,12 +74,6 @@ class DefiDollarClient extends ClientBase {
         return { expectedAmount, peak: this.zap.options.address }
     }
 
-    _sanitizeTokens(tokens) {
-        Object.keys(tokens).forEach(t => {
-            if (!tokens[t] || isNaN(parseFloat(tokens[t]))) delete tokens[t]
-        })
-    }
-
     /**
      * @notice Redeem DUSD
      * @dev Don't send values scaled with decimals. The following code will handle it.

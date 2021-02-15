@@ -46,6 +46,12 @@ class ClientBase {
         }
         return inAmounts
     }
+
+    _sanitizeTokens(tokens) {
+        Object.keys(tokens).forEach(t => {
+            if (!tokens[t] || isNaN(parseFloat(tokens[t]))) delete tokens[t]
+        })
+    }
 }
 
 module.exports = ClientBase
