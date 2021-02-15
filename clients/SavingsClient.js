@@ -4,16 +4,20 @@ const Web3Client = require('./Web3Client')
 
 const ibDUSD = require('../artifacts/ibDUSD.json')
 const IERC20 = require('../artifacts/ERC20Detailed.json')
+const zap = require('../artifacts/YVaultZap.json')
+
 const utils = require('./utils')
+
 const { toBN, toWei, fromWei } = utils
 
-class SavingsClient {
+class SavingsClient extends ClientBase {
     constructor(web3, config) {
+        super(config)
         web3 = web3 || new Web3()
         this.web3Client = new Web3Client(web3)
-        this.config = config
         this.ibDusd = new web3.eth.Contract(ibDUSD.abi, config.contracts.tokens.ibDUSD.address)
         this.dusd = new web3.eth.Contract(IERC20.abi, config.contracts.tokens.DUSD.address)
+        this.zap = new web3.eth.Contract(zap.abi, this.config.contracts.peaks.yVaultPeak.zap)
     }
 
     /**
@@ -22,6 +26,19 @@ class SavingsClient {
      */
     deposit(amount, options = {}) {
         const txObject = this.ibDusd.methods.deposit(toWei(amount.toString()))
+        return this.web3Client.send(txObject, options)
+    }
+
+    /**
+     * @notice Mint DUSD and deposit in savings vault
+     * @dev Don't send values scaled with decimals. The following code will handle it.
+     * @param {*} tokens InAmounts in the format { DAI: '6.1', USDT: '0.2', ... }
+     * @param {*} dusdAmount Expected dusd amount not accounting for the slippage
+     * @param {*} slippage Maximum allowable slippage 0 <= slippage <= 100 %
+     */
+    mintAndDeposit(tokens, dusdAmount, slippage, options = {}) {
+        const minDusdAmount = this.adjustForSlippage(dusdAmount, 18, slippage).toString()
+        const txObject = this.zap.methods.deposit(this._processAmounts(tokens), minDusdAmount)
         return this.web3Client.send(txObject, options)
     }
 

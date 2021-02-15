@@ -11,14 +11,12 @@ const Core = require('../artifacts/Core.json')
 
 const toBN = Web3.utils.toBN
 const toWei = Web3.utils.toWei
-const TEN_THOUSAND = toBN(10000)
 
-class DefiDollarClient {
+class DefiDollarClient extends ClientBase {
     constructor(web3, config) {
+        super(config)
         web3 = web3 || new Web3()
         this.web3Client = new Web3Client(web3)
-        this.config = config
-        this.yVaultPeak = this.config.contracts.peaks.yVaultPeak
         this.IERC20 = new web3.eth.Contract(IERC20.abi)
         this.peak = new web3.eth.Contract(IPeak.abi, this.yVaultPeak.address)
         this.zap = new web3.eth.Contract(zap.abi, this.yVaultPeak.zap)
@@ -39,9 +37,9 @@ class DefiDollarClient {
         let txObject
         if (Object.keys(tokens).length === 1 && (tokens.yCRV || tokens.yUSD)) {
             if (tokens.yCRV) {
-                txObject = this.peak.methods.mintWithYcrv(scale(tokens.yCRV, 18).toString())
+                txObject = this.peak.methods.mintWithYcrv(this.scale(tokens.yCRV, 18).toString())
             } else if (tokens.yUSD) {
-                txObject = this.peak.methods.mintWithYusd(scale(tokens.yUSD, 18).toString())
+                txObject = this.peak.methods.mintWithYusd(this.scale(tokens.yUSD, 18).toString())
             }
         } else { // mint with 1 or more of the vanilla coins
             const minDusdAmount = this.adjustForSlippage(dusdAmount, 18, slippage).toString()
@@ -66,9 +64,9 @@ class DefiDollarClient {
         let expectedAmount
         if (Object.keys(tokens).length === 1 && (tokens.yCRV || tokens.yUSD)) {
             if (tokens.yCRV) {
-                expectedAmount = await this.peak.methods.calcMintWithYcrv(scale(tokens.yCRV, 18)).call()
+                expectedAmount = await this.peak.methods.calcMintWithYcrv(this.scale(tokens.yCRV, 18)).call()
             } else if (tokens.yUSD) {
-                expectedAmount = await this.peak.methods.calcMintWithYusd(scale(tokens.yUSD, 18)).call()
+                expectedAmount = await this.peak.methods.calcMintWithYusd(this.scale(tokens.yUSD, 18)).call()
             }
             return { expectedAmount, peak: this.yVaultPeak.address }
         }
@@ -80,20 +78,6 @@ class DefiDollarClient {
         Object.keys(tokens).forEach(t => {
             if (!tokens[t] || isNaN(parseFloat(tokens[t]))) delete tokens[t]
         })
-    }
-
-    _processAmounts(tokens) {
-        Object.keys(tokens).forEach(t => assert.ok(this.yVaultPeak.coins.includes(t), 'bad coins'))
-        const inAmounts = new Array(4)
-        for(let i = 0; i < this.yVaultPeak.coins.length; i++) {
-            const c = this.yVaultPeak.coins[i]
-            if (tokens[c]) {
-                inAmounts[i] = scale(tokens[c], this.config.contracts.tokens[c].decimals).toString()
-            } else {
-                inAmounts[i] = 0
-            }
-        }
-        return inAmounts
     }
 
     /**
@@ -167,19 +151,6 @@ class DefiDollarClient {
         return { ceiling: ceiling.toString(), available }
     }
 
-    adjustForSlippage(amount, decimals, slippage) {
-        slippage = parseFloat(slippage)
-        if (isNaN(slippage) || slippage < 0 || slippage > 100) {
-            throw new Error(`Invalid slippage value: ${slippage} provided`)
-        }
-        amount = decimals ? scale(amount, decimals) : toBN(amount)
-        if (amount.eq(toBN(0)) || slippage == 0) return amount.toString()
-        return toBN(amount)
-            .mul(TEN_THOUSAND.sub(toBN(parseFloat(slippage) * 100)))
-            .div(TEN_THOUSAND)
-            .toString()
-    }
-
     // ##### Common Functions #####
 
     /**
@@ -210,7 +181,7 @@ class DefiDollarClient {
         if (!this.IERC20.options.address) throw new Error(`tokenId ${tokenId} is not known`)
         const txObject = this.IERC20.methods.approve(
             spender,
-            decimals ? scale(amount, decimals).toString() : amount.toString()
+            decimals ? this.scale(amount, decimals).toString() : amount.toString()
         )
         return this.web3Client.send(txObject, options)
     }
@@ -224,16 +195,6 @@ class DefiDollarClient {
     _processTokenId(token) {
         return token.slice(0, 2) !== '0x' ? this.config.contracts.tokens[token].address : token
     }
-}
-
-function scale(num, decimals) {
-    num = toBN(toWei(num.toString()))
-    if (decimals < 18) {
-        num = num.div(toBN(10).pow(toBN(18 - decimals)))
-    } else if (decimals > 18) {
-        num = num.mul(toBN(10).pow(toBN(decimals - 18)))
-    }
-    return num
 }
 
 module.exports = DefiDollarClient
