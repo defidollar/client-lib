@@ -9,7 +9,7 @@ const zap = require("../artifacts/YVaultZap.json");
 const StakeLPToken = require("../artifacts/StakeLPToken.json");
 const Core = require("../artifacts/Core.json");
 
-const ClientBase = require("../ClientBase.json");
+const ClientBase = require("./ClientBase.json");
 
 const toBN = Web3.utils.toBN;
 const toWei = Web3.utils.toWei;
