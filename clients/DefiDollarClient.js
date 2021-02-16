@@ -1,5 +1,4 @@
 const Web3 = require("web3");
-const assert = require("assert").strict;
 
 const Web3Client = require("./Web3Client");
 

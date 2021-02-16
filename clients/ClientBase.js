@@ -1,3 +1,4 @@
+const assert = require("assert").strict;
 const Web3 = require("web3");
 
 const toBN = Web3.utils.toBN;
