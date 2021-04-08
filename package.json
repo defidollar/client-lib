@@ -1,7 +1,7 @@
 {
-  "name": "@defidollar/core-client-lib",
-  "version": "2.5.0",
-  "description": "Client library for the defidollar smart contracts",
+  "name": "@defidollar/core-client-lib-bsc",
+  "version": "2.5.2",
+  "description": "Client library for the defidollar smart contracts for Binance Smart Chain",
   "repository": "https://github.com/defidollar/core-client-lib",
   "main": "index.js",
   "scripts": {
@@ -13,8 +13,6 @@
     "mocha": "^8.0.1"
   },
   "dependencies": {
-    "axios": "^0.21.0",
-    "underscore": "^1.11.0",
     "web3": "^1.2.11"
   }
 }
